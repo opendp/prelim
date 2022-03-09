@@ -6,6 +6,8 @@ import numpy as np
 # Compositor may be found here:
 # from meas_composition import composition_tCDP_static_hetero
 
+# Casting to approxDP may be found here:
+# from meas_cast import cast_tCDP_approxDP_fix_delta
 
 
 def map_l2dist_sinhnormalmech_tCDP(sensitivity, scale, A):
@@ -21,7 +23,7 @@ def map_l2dist_sinhnormalmech_tCDP(sensitivity, scale, A):
 def mechanism_sinhhormal(x, scale, A):
     """Privatize an estimate `x` with the sinhnormal mechanism."""
     shape = x.shape if isinstance(x, np.ndarray) else None
-    return x + A * np.random.arsinh(np.random.normal(scale=scale, shape=shape) / A)
+    return x + A * np.arcsinh(np.random.normal(scale=scale, shape=shape) / A)
 
 
 

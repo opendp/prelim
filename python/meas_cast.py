@@ -89,3 +89,17 @@ def cast_renyiDP_approxDP_fix_delta(alpha, epsilon, delta):
     from utils.renyi_sgm import get_privacy_spent
     return get_privacy_spent(alpha, epsilon, delta)
 
+
+def cast_tCDP_approxDP_fix_delta(distance, delta):
+    """cast a (rho, omega)-tCDP measurement to a (epsilon, delta)-DP measurement where delta is fixed
+    Lemma 6: https://projects.iq.harvard.edu/files/privacytools/files/bun_mark_composable_.pdf#%5B%7B%22num%22%3A55%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22Fit%22%7D%5D
+    See Lemma 8 for more context (choice of alpha)
+    """
+    rho, omega = distance
+    epsilon = None
+    if np.log(1 / delta) <= (omega - 1) * 2 * rho:
+        epsilon = rho + 2 * np.sqrt(rho + np.log(1/delta))
+    else:
+        epsilon = rho * omega + np.log(1 / delta) / (omega - 1)
+    
+    return epsilon, delta
