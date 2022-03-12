@@ -2,8 +2,8 @@ import numpy as np
 
 
 def postprocess_synthesize_indexes(hist, size):
-    """Use an n-dimensional histogram to generate a synthetic dataset of indices into `hist`
-    
+    """Use an n-dimensional histogram to generate a synthetic dataset of cell indexes
+
     
     :param hist: an n-dimensional array of counts
     :param size: how many rows to synthesize in the output dataset
@@ -22,25 +22,6 @@ def postprocess_synthesize_indexes(hist, size):
     return np.unravel_index(value_bins, hist.shape)
 
 
-def postprocess_synthesize_continuous(hist, edges, size):
-    """Use an n-dimensional histogram to generate a synthetic dataset of continuous data.
-    
-    :param hist: an n-dimensional array of counts
-    :param edges: edges from which each dimension of hist was binned
-    :param size: how many rows to synthesize in the output dataset
-    :returns synthetic dataset with `hist.ndim` columns and `size` records.
-    """
-
-    # we will sample from the center of each bin
-    midpoints = [edge_set[:-1] + np.diff(edge_set) / 2 for edge_set in edges]
-
-    # generate the synthetic index dataset
-    synthetic_indices = postprocess_synthesize_indexes(hist, size)
-
-    # retrieve the midpoint values from the respective bins
-    return np.stack([mids[idxs] for mids, idxs in zip(midpoints, synthetic_indices)], axis=1)
-
-
 def postprocess_synthesize_categorical(hist, categories, size):
     """Use an n-dimensional histogram to generate a synthetic dataset of categorical data.
     
@@ -54,6 +35,24 @@ def postprocess_synthesize_categorical(hist, categories, size):
 
     # retrieve the midpoint values from the respective bins
     return np.stack([cats[idxs] for cats, idxs in zip(categories, synthetic_indices)], axis=1)
+
+
+def get_midpoints(edges):
+    return edges[:-1] + np.diff(edges) / 2
+
+
+def postprocess_synthesize_continuous(hist, edges, size):
+    """Use an n-dimensional histogram to generate a synthetic dataset of continuous data.
+    
+    :param hist: an n-dimensional array of counts
+    :param edges: edges from which each dimension of hist was binned
+    :param size: how many rows to synthesize in the output dataset
+    :returns synthetic dataset with `hist.ndim` columns and `size` records.
+    """
+    # can consider the continuous case to be a special case of categorical sampling
+    midpoints = [get_midpoints(edge_set) for edge_set in edges]
+    return postprocess_synthesize_categorical(hist, midpoints, size)
+
 
 
 def test_synthetic_data():
