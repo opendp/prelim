@@ -141,7 +141,7 @@ def postprocess_hierarchical_histogramdd_discrete(
     # - laplace/geometric variance is 2 * scale ^ 2, and the 2 cancels with the denominator
     # - gaussian variance is scale ^ 2
     weights = np.concatenate(
-        [np.full(np.prod(category_lengths[np.array(axes)]), 1 / scale**2) for axes, scale in hierarchy.items()]
+        [np.full(np.prod(category_lengths[np.array(axes, dtype=int)]), 1 / scale**2) for axes, scale in hierarchy.items()]
     )
     weights /= weights.sum()
 
@@ -152,7 +152,7 @@ def postprocess_hierarchical_histogramdd_discrete(
 
     def unpack(x):
         return {
-            axes: x_i.reshape(category_lengths[np.array(axes)])
+            axes: x_i.reshape(category_lengths[np.array(axes, dtype=int)])
             for x_i, axes in zip(np.split(x, offsets), hierarchy)
         }
 
@@ -165,7 +165,7 @@ def postprocess_hierarchical_histogramdd_discrete(
             errors.append(
                 hierarchical_hist_p[parent]
                 - hierarchical_hist_p[child].sum(
-                    axis=tuple(i for i in child if i not in parent)
+                    axis=tuple(child.index(i) for i in child if i not in parent)
                 )
             )
 
@@ -243,7 +243,7 @@ def test_postprocess_hierarchical_histogramdd_discrete():
 
 def test_postprocess_hierarchical_histogramdd_discrete_big():
     cat_counts = [2, 3, 7, 4, 2, 3]
-    size = 1_000
+    size = 10_000
     x = np.stack([np.random.randint(c, size=size) for c in cat_counts], axis=1)
 
     hierarchy = {
@@ -251,19 +251,24 @@ def test_postprocess_hierarchical_histogramdd_discrete_big():
         (0,): 1.0,  # histogram of cell counts along variable 0
         (1,): 1.0,  # histogram of cell counts along variable 1
         (2, 3): 2.0,  # 2d histogram of cell counts over variables 2 and 3
+        (3, 4, 5): 1.0, 
         (4, 5): 0.5,  # 2d histogram of cell counts over variables 4 and 5
+        (5,): 1.,
+        # (): .3
     }
 
     hierarchical_hist = release_hierarchical_histogramdd_discrete(
         x, cat_counts, hierarchy
     )
 
-    solved = postprocess_hierarchical_histogramdd_discrete(
+    consistent_hist = postprocess_hierarchical_histogramdd_discrete(
         hierarchical_hist, cat_counts, hierarchy, nonnegative=True
     )
 
-    print("noisy:     ", hierarchical_hist)
-    print("consistent:", solved)
+    for axes in hierarchy:
+        print("axes:      ", axes)
+        print("noisy:     ", hierarchical_hist[axes])
+        print("consistent:", consistent_hist[axes])
 
 
-# test_postprocess_hierarchical_histogramdd_discrete_big()
+test_postprocess_hierarchical_histogramdd_discrete_big()
