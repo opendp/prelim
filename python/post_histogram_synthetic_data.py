@@ -1,12 +1,14 @@
 import numpy as np
 
 
-def synthesize(hist, edges, size):
-    """Use an n-dimensional histogram to generate a synthetic dataset with n columns and `size` records.
+def postprocess_synthesize_indexes(hist, size):
+    """Use an n-dimensional histogram to generate a synthetic dataset of indices into `hist`
+    
     
     :param hist: an n-dimensional array of counts
-    :param edges: edges from which each dimension of hist was binned
-    :param size: how many rows to synthesize in the output synthetic dataset"""
+    :param size: how many rows to synthesize in the output dataset
+    :returns synthetic index dataset with `hist.ndim` columns and `size` records.
+    """
 
     # the cdf is wrt the flattened bins
     cdf = hist.ravel().cumsum().astype(np.float)
@@ -16,14 +18,42 @@ def synthesize(hist, edges, size):
     values = np.random.uniform(size=size)
     value_bins = np.searchsorted(cdf, values)
 
+    # translate the unraveled bin indexes to nd indexes
+    return np.unravel_index(value_bins, hist.shape)
+
+
+def postprocess_synthesize_continuous(hist, edges, size):
+    """Use an n-dimensional histogram to generate a synthetic dataset of continuous data.
+    
+    :param hist: an n-dimensional array of counts
+    :param edges: edges from which each dimension of hist was binned
+    :param size: how many rows to synthesize in the output dataset
+    :returns synthetic dataset with `hist.ndim` columns and `size` records.
+    """
+
     # we will sample from the center of each bin
     midpoints = [edge_set[:-1] + np.diff(edge_set) / 2 for edge_set in edges]
-    
-    # translate the unraveled bin indexes to nd indexes
-    indexes = np.unravel_index(value_bins, tuple(map(len, midpoints)))
+
+    # generate the synthetic index dataset
+    synthetic_indices = postprocess_synthesize_indexes(hist, size)
 
     # retrieve the midpoint values from the respective bins
-    return np.stack([mids[idxs] for mids, idxs in zip(midpoints, indexes)], axis=1)
+    return np.stack([mids[idxs] for mids, idxs in zip(midpoints, synthetic_indices)], axis=1)
+
+
+def postprocess_synthesize_categorical(hist, categories, size):
+    """Use an n-dimensional histogram to generate a synthetic dataset of categorical data.
+    
+    :param hist: an n-dimensional array of counts
+    :param edges: edges from which each dimension of hist was binned
+    :param size: how many rows to synthesize in the output dataset
+    :returns synthetic dataset with `hist.ndim` columns and `size` records.
+    """
+    # generate the synthetic index dataset
+    synthetic_indices = postprocess_synthesize_indexes(hist, size)
+
+    # retrieve the midpoint values from the respective bins
+    return np.stack([cats[idxs] for cats, idxs in zip(categories, synthetic_indices)], axis=1)
 
 
 def test_synthetic_data():
@@ -56,7 +86,7 @@ def test_synthetic_data():
             hist = np.round(np.random.laplace(hist, scale=1. / epsilon))
             hist[hist < max(0, threshold)] = 0
 
-        x_synth, y_synth = synthesize(hist, [x_edges, y_edges], size).T
+        x_synth, y_synth = postprocess_synthesize_continuous(hist, [x_edges, y_edges], size).T
 
         return x_synth, y_synth
 
