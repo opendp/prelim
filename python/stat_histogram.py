@@ -45,26 +45,6 @@ def release_histogramdd_indexes(
     return np.reshape(meas(hist.flatten()), hist.shape)
 
 
-def digitize_dataframe(df, labels, categorical):
-    """Convert a pandas dataframe into an indexes array.
-
-    :param df: columns must match the keys in `labels`
-    :param labels: a {colname: list_of_edges_or_categories} dict
-    :param categoricals: list of column names that should be considered categorical
-    """
-    columns = []
-    for name in labels:
-        if name in categorical:
-            lookup = dict(zip(labels[name], range(len(labels[name]))))
-            columns.append(df[name].map(lambda v: lookup[v]).values)
-        else:
-            # consider anything up to edge 2 to be part of bin 0
-            #          anything above the second to last edge is part of the last bin
-            columns.append(np.digitize(df[name].values, labels[name][1:-1]))
-
-    return np.stack(columns, axis=1)
-
-
 
 # TESTS
 def test_histogramdd_discrete():
@@ -82,55 +62,3 @@ def test_histogramdd_discrete():
 def test_histogram0d_discrete():
     x = np.empty(shape=(100, 0))
     print(histogramdd_indexes(x, []))
-
-
-def test_digitize_dataframe():
-    import pandas as pd
-
-    data = pd.DataFrame(
-        {
-            "A": [1, 2, 4, 2],
-            "B": ["nebraska", "montana", "idaho", "idaho"],
-            "C": [0.1, 0.2, 0.5, 0.7],
-        }
-    )
-
-    labels = {
-        "A": [1, 2, 3, 4],  # categories
-        "B": ["nebraska", "montana", "idaho", "utah"],  # categories
-        "C": [0.0, 0.3, 0.5, 1.0],  # edges
-    }
-
-    categorical_names = ["A", "B"]
-
-    digitized = digitize_dataframe(data, labels, categorical_names)
-    ground_truth = [[0, 0, 0], [1, 1, 0], [3, 2, 2], [1, 2, 2]]
-
-    # check that the digitization is correct
-    assert np.array_equal(digitized, ground_truth)
-
-    ### SYNTHETIC DATA DEMO
-    # demonstrate generating synthetic data with a mixture of categorical and continuous variables
-    from post_histogram_synthetic_data import (
-        postprocess_synthesize_categorical,
-        get_midpoints,
-    )
-
-    # standardize labels, which could be categories or edges, into categories
-    categories = []
-    for name in labels:
-        if name in categorical_names:
-            categories.append(np.array(labels[name]))
-        else:
-            categories.append(get_midpoints(labels[name]))
-
-    # make a dp release of the digitized dataset
-    dp_release = release_histogramdd_indexes(digitized, list(map(len, categories)), 1.0)
-    
-    # synthesize data from the empirical cdf
-    synthetic_data = postprocess_synthesize_categorical(
-        dp_release, categories, size=100
-    )
-
-    print(pd.DataFrame(synthetic_data, columns=data.columns))
-
