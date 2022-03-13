@@ -7,12 +7,13 @@ from post_histogram_synthetic_data import get_midpoints
 enable_features("contrib")
 
 
-def postprocess_monotonic(counts):
+def postprocess_histogram_monotonic_cumsum(counts):
     """Postprocess `counts` to be non-negative. 
     Only applicable if the counts correspond to ordered bins.
     
     Any negative count is inconsistent with the previous bin.
-    Can be used to improve accuracy of postprocess quantile estimates.
+    Can significantly reduce error for small range queries.
+    Error increases linearly as the range increases.
 
     See Section 3.1: https://arxiv.org/pdf/0904.0942.pdf
     """
@@ -38,7 +39,7 @@ def test_monotonic():
     # the first bin is anything below the first edge and last bin is anything after the last edge
     exact_counts = np.array(trans(data)[1:-1])
     noisy_counts = np.array(meas(data)[1:-1])
-    monot_counts = postprocess_monotonic(noisy_counts)
+    monot_counts = postprocess_histogram_monotonic_cumsum(noisy_counts)
 
     import matplotlib.pyplot as plt
 
