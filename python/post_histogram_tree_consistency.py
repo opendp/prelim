@@ -45,6 +45,8 @@ def postprocess_m_ary_tree(tree, m):
     Tree is assumed to be complete, as in, all leaves on the last layer are on the left.
     Non-existent leaves are assumed to be zero.
 
+    See 4.1: https://arxiv.org/pdf/0904.0942.pdf
+
     :param tree: a balanced `m`-ary tree implicitly stored in breadth-first order
     :param m: the maximum number of children
     :returns the consistent leaf nodes

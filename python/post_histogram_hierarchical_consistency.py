@@ -54,15 +54,42 @@ def release_hierarchical_histogramdd_indexes(
     return hierarchical_hist
 
 
+def _get_isomorphic_axes(axes):
+    # 1. consider a topological ordering over all possible sets of axes:
+    #     choose any two sets of axes, A and B. A is greater than B if B.is_subset(A)
+    # 2. this topological ordering on `axes` admits a directed acyclic graph
+    #     choose any edge connecting two sets of axes, a parent and child.
+    #     The parent should be equivalent to the summation of certain axes in the child
+    # 3. find the transitive reduction of this dag to minimize the number of constraints
+    # 4. construct equality constraints for all edges in the dag
+    from itertools import permutations, chain
+
+    dag = {axes_i: [] for axes_i in axes}
+
+    def descendants(v):
+        # all children of v, and all descendents of all children of v
+        return [*dag[v], *chain(descendants(c) for c in list(dag[v]))]
+
+    for parent, child in permutations(axes, 2):
+        if set(parent).issubset(child) and child not in descendants(parent):
+            dag[parent].append(child)
+
+    isomorphic_axes = []
+    for v in dag:
+        isomorphic_axes.extend([(v, c) for c in dag[v]])
+    return isomorphic_axes
+
+
 def postprocess_hierarchical_histogramdd(hists, scales, nonnegative=False):
     """Make a set of noisy hypercubes at varying cross-tabulations consistent with each other.
+
+    Runs in O(n^2) time. `postprocess_tree_histogramdd` is a linear time algorithm for linear hierarchies.
 
     :param hists: A dict of {axes: hist}, where each hist is a `len(axes)`-dimensional counts array.
     :param scales: a dict of {axes: scale}. Scale is the noise scale when privatizing.
     :returns the same data structure as `hists`, but each histogram is consistent with each other.
     """
     from scipy.optimize import fmin_slsqp
-    from itertools import permutations, chain
 
     axes = list(hists.keys())
     assert axes == list(scales.keys()), "`hists` and `scales` must share the same keys"
@@ -92,26 +119,7 @@ def postprocess_hierarchical_histogramdd(hists, scales, nonnegative=False):
     weights /= weights.sum()
 
     # C. find the smallest set of pairs of axes that must be equivalent under summation
-    #   1. consider a topological ordering over all possible sets of axes:
-    #      choose any two sets of axes, A and B. A is greater than B if B.is_subset(A)
-    #   2. this topological ordering on `axes` admits a directed acyclic graph
-    #      choose any edge connecting two sets of axes, a parent and child.
-    #      The parent should be equivalent to the summation of certain axes in the child
-    #   3. find the transitive reduction of this dag to minimize the number of constraints
-    #   4. construct equality constraints for all edges in the dag
-    dag = {axes_i: [] for axes_i in axes}
-
-    def descendants(v):
-        # all children of v, and all descendents of all children of v
-        return [*dag[v], *chain(descendants(c) for c in list(dag[v]))]
-
-    for parent, child in permutations(axes, 2):
-        if set(parent).issubset(child) and child not in descendants(parent):
-            dag[parent].append(child)
-    
-    isomorphic_axes = []
-    for v in dag:
-        isomorphic_axes.extend([(v, c) for c in dag[v]])
+    isomorphic_axes = _get_isomorphic_axes(axes)
 
     # D. represent the equality of isomorphic axes with an error function
     def f_eqcons(y):
@@ -136,6 +144,85 @@ def postprocess_hierarchical_histogramdd(hists, scales, nonnegative=False):
         f_ieqcons=(lambda x: x) if nonnegative else None,
     )
     return flat_to_hierarchical(y)
+
+
+def _check_is_linear(axes):
+    """Check that every histogram is a proper subset of its parent"""
+    for parent, child in reversed(list(zip(axes[:-1], axes[1:]))):
+        if not (child > parent):
+            raise ValueError("histogram hierarchy is not linear")
+
+
+def _axes_to_sum(child, parent):
+    """Find the indexes of axes that should be summed in `child` to get `parent`"""
+    return tuple(child.index(i) for i in child if i not in parent)
+
+
+def _branching_factor(category_lengths, axes_to_sum):
+    """branching factor between parent and child is the product of lengths of collapsed axes"""
+    return np.prod(category_lengths[np.array(axes_to_sum)])
+
+
+def _check_consistent(hists):
+    axes = list(hists)
+    for parent, child in reversed(list(zip(axes[:-1], axes[1:]))):
+        assert np.allclose(
+            hists[parent], hists[child].sum(axis=_axes_to_sum(child, parent))
+        )
+
+
+def postprocess_tree_histogramdd(hists):
+    """Make a set of noisy hypercubes of successive summations consistent with each other.
+    Assumes that all hists were noised with the same noise scale.
+
+    Runs in O(n) time.
+
+    See 4.1: https://arxiv.org/pdf/0904.0942.pdf
+
+    :param hists: A dict of {axes: hist}, where each hist is a `len(axes)`-dimensional counts array.
+    :returns the leaf layer histogram
+    """
+    # sort the keys by number of axes
+    hists = dict(sorted(hists.items(), key=lambda p: len(p[0])))
+    # ensure all hists are float
+    hists = {k: v.astype(float) for k, v in hists.items()}
+
+    axes = list(hists)
+    _check_is_linear(axes)  # algorithm assumes hierarchy is perfectly linear
+
+    # find shape of each axis. Last histogram holds all axis lengths
+    category_lengths = np.array(hists[axes[-1]].shape)
+
+    # height of tree
+    l = len(hists)
+
+    # bottom-up scan to compute z
+    for parent, child in reversed(list(zip(axes[:-1], axes[1:]))):
+        axes_to_sum = _axes_to_sum(child=child, parent=parent)
+        m = _branching_factor(category_lengths, axes_to_sum)
+
+        # hists[parent] has not been overriden because traversal order is bottom to top
+        term1 = (m**l - m ** (l - 1)) / (m**l - 1) * hists[parent]
+
+        # hists[child] has been overwritten by previous loop
+        term2 = (m ** (l - 1) - 1) / (m**l - 1) * hists[child].sum(axis=axes_to_sum)
+
+        hists[parent] = term1 + term2
+
+    h_b = {a: h.copy() for a, h in hists.items()}
+
+    # top down scan to compute h
+    for parent, child in zip(axes[:-1], axes[1:]):
+        axes_to_sum = _axes_to_sum(child=child, parent=parent)
+        m = _branching_factor(category_lengths, axes_to_sum)
+
+        correction = (h_b[parent] - hists[child].sum(axis=axes_to_sum)) / m
+        h_b[child] += np.expand_dims(correction, axes_to_sum)
+
+    # _check_consistent(h_b)
+
+    # entire tree is consistent, so only the bottom layer is needed
+    return h_b[axes[-1]]
 
 
 # TESTS
@@ -171,9 +258,7 @@ def test_postprocess_hierarchical_histogramdd_discrete():
     scales = {(0, 1): 1.0, (0,): 1.0, (1,): 1.0}
 
     hierarchical_hist = release_hierarchical_histogramdd_indexes(x, cat_counts, scales)
-    consistent_hist = postprocess_hierarchical_histogramdd(
-        hierarchical_hist, scales
-    )
+    consistent_hist = postprocess_hierarchical_histogramdd(hierarchical_hist, scales)
 
     print("noisy:     ", hierarchical_hist)
     print("consistent:", consistent_hist)
@@ -213,3 +298,45 @@ def test_postprocess_hierarchical_histogramdd_discrete_big():
 
 
 # test_postprocess_hierarchical_histogramdd_discrete_big()
+
+
+def test_postprocess_tree_histogramdd():
+    category_lengths = [2, 2, 4]
+
+    hists = {(0, 1, 2): np.random.randint(0, 100, size=category_lengths)}
+    hists[(0, 1)] = hists[(0, 1, 2)].sum(axis=2)
+    hists[(0,)] = hists[(0, 1)].sum(axis=1)
+    hists[()] = hists[(0,)].sum(axis=0)
+
+    hists = dict(reversed(hists.items()))
+
+    print(postprocess_tree_histogramdd(hists))
+
+
+# test_postprocess_tree_histogramdd()
+
+
+def test_postprocess_tree_histogramdd_2():
+    cat_counts = [3, 4, 5, 7]
+    size = 100
+    x = np.stack([np.random.randint(c, size=size) for c in cat_counts], axis=1)
+
+    scale = 1.0
+    ways = {(0, 1): scale, (0,): scale, (0, 1, 2, 3): scale}
+
+    noisy_hists = release_hierarchical_histogramdd_indexes(x, cat_counts, ways)
+    
+    final_counts = postprocess_tree_histogramdd(noisy_hists)
+    noisy_counts = noisy_hists[(0, 1, 2, 3)]
+    exact_counts = histogramdd_indexes(x, cat_counts)
+
+    final_mse = ((final_counts - exact_counts) ** 2).mean()
+    noisy_mse = ((noisy_counts - exact_counts) ** 2).mean()
+    print("final mse should be slightly smaller")
+    print(f"{final_mse=}")
+    print(f"{noisy_mse=}")
+    print(f"{1 - final_mse / noisy_mse=:.4%} reduction in mse")
+    # ~ 2-3% and counts are consistent
+
+
+# test_postprocess_tree_histogramdd_2()
