@@ -197,16 +197,15 @@ def postprocess_tree_histogramdd(hists, scales):
     var = scales[axes[-1]] ** 2
 
     # bottom-up scan to compute z
-    for parent, child in reversed(list(zip(axes[:-1], axes[1:]))):
-        # we skip the root level
+    for parent, child in zip(axes[1::-1], axes[::-1][:-1]):
         axes_to_sum = _axes_to_sum(child=child, parent=parent)
         b = _branching_factor(category_lengths, axes_to_sum)
 
         # derive overall variance of parent after weighted averaging
-        var = 1 / scales[parent]**2 + 1 / (b * var)
+        var = 1 / (1 / scales[parent]**2 + 1 / (b * var))
 
-        # weight parent layer based on its proportion of overall variance
-        alpha = (1 / scales[parent]**2) / var
+        # weight parent contribution based on its proportion of inverse variance
+        alpha = var / scales[parent]**2
 
         # hists[parent] has not been overriden because traversal order is bottom to top
         term1 = alpha * hists[parent]
@@ -226,7 +225,7 @@ def postprocess_tree_histogramdd(hists, scales):
         correction = (h_b[parent] - hists[child].sum(axis=axes_to_sum)) / b
         h_b[child] += np.expand_dims(correction, axes_to_sum)
 
-    # _check_consistent(h_b)
+    _check_consistent(h_b)
 
     # entire tree is consistent, so only the bottom layer is needed
     return h_b[axes[-1]]
@@ -324,16 +323,16 @@ def test_postprocess_tree_histogramdd():
 
 
 def test_postprocess_tree_histogramdd_2():
-    cat_counts = [3, 4, 5, 7]
+    cat_counts = [3, 3, 3, 3]
     size = 100
     x = np.stack([np.random.randint(c, size=size) for c in cat_counts], axis=1)
 
-    ways = {(0, 1): 1.0, (0,): 0.5, (0, 1, 2, 3): 3.}
+    ways = {(): 1., (0, 1): 1.0, (0,): 1., (0, 1, 2): 1.}
 
     noisy_hists = release_hierarchical_histogramdd_indexes(x, cat_counts, ways)
     
     final_counts = postprocess_tree_histogramdd(noisy_hists, ways)
-    noisy_counts = noisy_hists[(0, 1, 2, 3)]
+    noisy_counts = noisy_hists[(0, 1, 2)]
     exact_counts = histogramdd_indexes(x, cat_counts)
 
     final_mse = ((final_counts - exact_counts) ** 2).mean()
@@ -342,7 +341,6 @@ def test_postprocess_tree_histogramdd_2():
     print(f"{final_mse=}")
     print(f"{noisy_mse=}")
     print(f"{1 - final_mse / noisy_mse=:.4%} reduction in mse")
-    # ~ 2-3% and counts are consistent
 
 
 # test_postprocess_tree_histogramdd_2()

@@ -1,28 +1,28 @@
 import numpy as np
 
 
-def _height_from_leaf_count(n, m):
-    """Height of a balanced m-ary tree with `n` leaf nodes."""
-    return np.ceil(np.log(n) / np.log(m)).astype(int) + 1
+def _height_from_leaf_count(n, b):
+    """Height of a balanced `b`-ary tree with `n` leaf nodes."""
+    return np.ceil(np.log(n) / np.log(b)).astype(int) + 1
 
 
-def transform_m_ary_tree(leaf_counts, m):
-    """Transforms a 1d-array of leaf counts into a balanced m-ary tree implicitly stored in breadth-first order.
+def transform_b_ary_tree(leaf_counts, b):
+    """Transforms a 1d-array of leaf counts into a balanced b-ary tree implicitly stored in breadth-first order.
 
-    :param leaf_counts: counts of each of the leaf nodes of the m-ary tree
+    :param leaf_counts: counts of each of the leaf nodes of the b-ary tree
     :param m: the maximum number of children per node
     :returns An array where the first element is the root sum,
              the next m are its summand children,
-             the next m^2 are their children,
+             the next b^2 are their children,
              and so on.
     """
     # find height of the rest of the tree
-    height = _height_from_leaf_count(len(leaf_counts), m) - 1
+    height = _height_from_leaf_count(len(leaf_counts), b) - 1
 
-    pad_length = m**height - len(leaf_counts)
+    pad_length = b**height - len(leaf_counts)
 
     base = np.concatenate([leaf_counts, np.zeros(pad_length, dtype=int)]).reshape(
-        (m,) * height
+        (b,) * height
     )
 
     levels = []
@@ -33,65 +33,107 @@ def transform_m_ary_tree(leaf_counts, m):
     return np.concatenate([*levels[::-1], leaf_counts])
 
 
-def transform_m_ary_tree_relation(num_leaves, m, sensitivity):
-    """Derive sensitivity of a balanced m-ary tree from the sensitivity of the leaf nodes.
+def transform_b_ary_tree_relation(num_leaves, b, sensitivity):
+    """Derive sensitivity of a balanced `b`-ary tree from the sensitivity of the leaf nodes.
     Proposition 4: https://arxiv.org/pdf/0904.0942.pdf"""
-    return sensitivity * _height_from_leaf_count(num_leaves, m)
+    return sensitivity * _height_from_leaf_count(num_leaves, b)
 
 
-def postprocess_m_ary_tree(tree, m):
-    """Postprocess a balanced `m`-ary tree to be consistent.
+def _layers_from_nodes(num_nodes, b):
+    return np.ceil(np.log((b - 1) * num_nodes + 1) / np.log(b)).astype(int)
+
+
+def _nodes_from_layers(layers, b):
+    return (b**layers - 1) // (b - 1)
+
+
+def postprocess_b_ary_tree(tree, b):
+    """Postprocess a balanced `b`-ary tree to be consistent.
 
     Tree is assumed to be complete, as in, all leaves on the last layer are on the left.
     Non-existent leaves are assumed to be zero.
 
     See 4.1: https://arxiv.org/pdf/0904.0942.pdf
 
-    :param tree: a balanced `m`-ary tree implicitly stored in breadth-first order
+    :param tree: a balanced `b`-ary tree implicitly stored in breadth-first order
     :param m: the maximum number of children
     :returns the consistent leaf nodes
     """
-    h_t = np.array(tree, dtype=float)
+    layers = _layers_from_nodes(len(tree), b)
+    # number of nodes in a perfect b-ary tree
+    vars = np.ones(_nodes_from_layers(layers, b))
+    zero_leaves = len(vars) - len(tree)
 
-    # height of tree
-    l = np.ceil(np.log(len(h_t)) / np.log(m)).astype(int)
-    last_row = m ** (l - 1) - 1
+    tree = np.concatenate([tree, np.zeros(zero_leaves)])
 
-    def children(v):
-        """return a slice into the children of v"""
-        v_first_child = v * m + 1
-        v_last_child = min(v_first_child + m, len(h_t))
-        return slice(v_first_child, v_last_child)
+    # zero out all zero variance zero nodes on tree
+    for l in range(layers):
+        l_zeros = zero_leaves // (b ** (layers - l - 1))
+        l_end = _nodes_from_layers(l + 1, b)
+        vars[l_end - l_zeros : l_end] = 0
+        tree[l_end - l_zeros : l_end] = 0
 
     # bottom-up scan to compute z
-    term1 = (m**l - m ** (l - 1)) / (m**l - 1)
-    term2 = (m ** (l - 1) - 1) / (m**l - 1)
-    z = h_t.copy()
-    for v in np.arange(last_row)[::-1]:
-        z[v] = term1 * h_t[v] + term2 * z[children(v)].sum()
+    for l in reversed(range(layers - 1)):
+        l_start = _nodes_from_layers(l, b)
+        for offset in range(b**l):
+            i = l_start + offset
+            if vars[i] == 0:
+                continue
+            child_slice = slice(i * b + 1, i * b + 1 + b)
+
+            child_var = vars[child_slice].sum()
+            child_val = tree[child_slice].sum()
+
+            # weight to give to self (part 1)
+            alpha = 1 / vars[i]
+
+            # update total variance of node to reflect postprocessing
+            vars[i] = 1 / (1 / vars[i] + 1 / child_var)
+
+            # weight to give to self (part 2)
+            # weight of self is a proportion of total inverse variance (total var / prior var)
+            alpha *= vars[i]
+
+            # postprocess by weighted inverse variance
+            tree[i] = alpha * tree[i] + (1 - alpha) * child_val
 
     # top down scan to compute h
-    h_b = z.copy()
-    for v in range(1, len(h_t)):
-        u = (v - 1) // m  # parent index
-        h_b[v] += (h_b[u] - z[children(u)].sum()) / m
+    h_b = tree.copy()
+    for l in range(layers - 1):
+        l_start = _nodes_from_layers(l, b)
 
-    # entire tree is consistent, so only the bottom layer is needed
-    return h_b[last_row:]
+        for offset in range(b**l):
+            i = l_start + offset
+            child_slice = slice(i * b + 1, i * b + 1 + b)
+            child_vars = vars[child_slice]
 
+            # children need to be adjusted by this amount to be consistent with parent
+            correction = h_b[i] - tree[child_slice].sum()
+            if correction == 0.0:
+                continue
+
+            # apportion the correction among children relative to their variance
+            h_b[child_slice] += correction * child_vars / child_vars.sum()
+
+    # entire tree is consistent, so only the nonzero leaves in bottom layer are needed
+    leaf_start = _nodes_from_layers(layers - 1, b)
+    leaf_end = _nodes_from_layers(layers, b) - zero_leaves
+    return h_b[leaf_start:leaf_end]
 
 
 # TESTS
-def test_release_m_ary_tree():
+def test_release_b_ary_tree():
     # setup
-    leaf_counts = np.array([2, 3, 1, 4, 5, 6, 7]) * 20
-    m = 2
+    leaf_counts = np.random.randint(0, 2000, size=11)
+    # leaf_counts = np.array([2, 3, 1, 4, 5, 6, 3]) * 20
+    m = 3
     sensitivity = 1
     epsilon = 1
 
     # run transformation
-    tree = transform_m_ary_tree(leaf_counts, m=m)
-    sensitivity = transform_m_ary_tree_relation(len(leaf_counts), m, sensitivity)
+    tree = transform_b_ary_tree(leaf_counts, b=m)
+    sensitivity = transform_b_ary_tree_relation(len(leaf_counts), m, sensitivity)
 
     # privatize
     from opendp.meas import make_base_geometric
@@ -101,13 +143,40 @@ def test_release_m_ary_tree():
 
     mech = make_base_geometric(sensitivity / epsilon, D="VectorDomain<AllDomain<i64>>")
     tree_noisy = np.array(mech(tree))
+    post_counts = postprocess_b_ary_tree(tree_noisy, m)
+    leaf_counts_noisy = tree_noisy[-len(leaf_counts) :]
 
     print("exact tree:", tree)
     print("noisy tree:", tree_noisy)
 
     print("exact leaves:", leaf_counts)
-    print("noisy leaves:", tree_noisy[-len(leaf_counts) :])
-    print("post  leaves:", postprocess_m_ary_tree(tree_noisy, m).round().astype(int))
+    print("noisy leaves:", leaf_counts_noisy)
+    print("post  leaves:", post_counts.astype(int))
+
+    print("exact sum:", leaf_counts.sum())
+    print("post  sum:", post_counts.sum())
+
+    final_mse = ((post_counts - leaf_counts) ** 2).mean()
+    noisy_mse = ((leaf_counts_noisy - leaf_counts) ** 2).mean()
+    print("final mse should be slightly smaller")
+    print(f"{final_mse=}")
+    print(f"{noisy_mse=}")
+    print(f"{1 - final_mse / noisy_mse=:.4%} reduction in mse")
+    # ~ 30% reduction in mse
 
 
-# test_release_m_ary_tree()
+def test_layers_from_nodes():
+    assert _layers_from_nodes(1, b=2) == 1
+    assert _layers_from_nodes(2, b=2) == 2
+    assert _layers_from_nodes(3, b=2) == 2
+    assert _layers_from_nodes(7, b=2) == 3
+    assert _layers_from_nodes(8, b=2) == 4
+
+    assert _layers_from_nodes(2, b=3) == 2
+    assert _layers_from_nodes(4, b=3) == 2
+    assert _layers_from_nodes(5, b=4) == 2
+    assert _layers_from_nodes(13, b=3) == 3
+    assert _layers_from_nodes(14, b=3) == 4
+
+
+# test_release_b_ary_tree()
