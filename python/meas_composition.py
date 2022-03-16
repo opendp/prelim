@@ -14,13 +14,13 @@ import numpy as np
 # "dynamic" when the choice of parameters is chosen adaptively
 
 # "hetero" for heterogeneous, where each epsilon_i and delta_i may vary
-# "homo" for homogeneous, where all k queries share the same `distance_0`. 
+# "homo" for homogeneous, where all k queries share the same `distance_0`.
 #   Omitted if a trivial simplification of heterogeneous composition
 
 
 def composition_approxDP_static_hetero_basic(distance_is):
     """apply composition on `distance_is`, a list of individual distances
-    
+
     :param distance_is: a list of (epsilon, delta), or ndarray of shape [k, 2]
     """
     epsilon_is, delta_is = zip(*distance_is)
@@ -39,7 +39,9 @@ def composition_approxDP_static_homo_advanced(distance_0, k, delta_p):
     :returns global (epsilon, delta) of k-fold composition of a (epsilon_0, delta_0)-DP mechanism
     """
     epsilon_0, delta_0 = distance_0
-    epsilon_g = np.sqrt(2 * k * np.log(1 / delta_p)) * epsilon_0 + k * epsilon_0 * (np.exp(epsilon_0) - 1)
+    epsilon_g = np.sqrt(2 * k * np.log(1 / delta_p)) * epsilon_0 + k * epsilon_0 * (
+        np.exp(epsilon_0) - 1
+    )
     delta_g = delta_0 * k + delta_p
     return epsilon_g, delta_g
 
@@ -54,16 +56,18 @@ def composition_approxDP_static_homo_optimal_analytic(distance_0, k, delta_p):
     :param delta_p: p as in prime. Slack term for delta. Allows for nontrivial epsilon composition
     """
     eps_0, del_0 = distance_0
-	
-	# Corresponds to Theorem 3.5 in KOV15. Ignoring nan.
-    epsilon = np.nanmin([
-        k * eps_0, 
-        k * eps_0 ** 2 + eps_0 * np.sqrt(2 * k * np.log(np.exp(1) + np.sqrt(k * eps_0 ** 2) * delta_p)),
-        k * eps_0 ** 2 + eps_0 * np.sqrt(2 * k * np.log(1 / delta_p))
-    ])
+
+    bound1 = k * eps_0
+    bound2 = k * eps_0**2 + eps_0 * np.sqrt(
+        2 * k * np.log(np.exp(1) + np.sqrt(k * eps_0**2) * delta_p)
+    )
+    bound3 = k * eps_0**2 + eps_0 * np.sqrt(2 * k * np.log(1 / delta_p))
+
+    # Corresponds to Theorem 3.5 in KOV15. Ignoring nan.
+    epsilon = np.nanmin([bound1, bound2, bound3])
 
     delta = 1 - (1 - delta_p) * (1 - del_0) ** k
-	
+
     return epsilon, delta
 
 
@@ -77,19 +81,22 @@ def composition_approxDP_static_hetero_optimal_analytic(distance_is, delta_p):
     :param delta_p: slack term for delta. Allows for tighter composition on epsilons
     """
     epsilon_is, delta_is = np.array(distance_is).T
-    
-    sum_of_squares = (epsilon_is ** 2).sum()
+
+    sum_of_squares = (epsilon_is**2).sum()
     first_term = sum(ep * (np.exp(ep) - 1) / (np.exp(ep) + 1) for ep in epsilon_is)
-	
-	# Corresponds to Theorem 3.5 in KOV15. Ignoring nan.
-    epsilon = np.nanmin([
-        sum(epsilon_is), 
-        first_term + np.sqrt((2 * np.log(np.exp(1) + (np.sqrt(sum_of_squares) / delta_p))) * sum_of_squares),
-        first_term + np.sqrt(2 * np.log(1 / delta_p) * sum_of_squares),
-    ])
+
+    # want to find the smallest of three bounds
+    bound1 = sum(epsilon_is)
+    bound2 = first_term + np.sqrt(
+        (2 * np.log(np.exp(1) + (np.sqrt(sum_of_squares) / delta_p))) * sum_of_squares
+    )
+    bound3 = first_term + np.sqrt(2 * np.log(1 / delta_p) * sum_of_squares)
+
+    # Corresponds to Theorem 3.5 in KOV15. Ignoring nan.
+    epsilon = np.nanmin([bound1, bound2, bound3])
 
     delta = 1 - (1 - delta_p) * np.prod(1 - delta_is)
-	
+
     return epsilon, delta
 
 
@@ -118,10 +125,13 @@ def composition_approxDP_static_homo_shuffle_composition_analytic(distance_0, k)
     """
     epsilon_0, delta_0 = distance_0
     from utils.shuffling_amplification import closedformanalysis
+
     return closedformanalysis(k, epsilon_0, delta_0)
 
 
-def composition_approxDP_static_homo_shuffle_composition_empirical(distance_0, k, iterations=10, step=100, bound="upper"):
+def composition_approxDP_static_homo_shuffle_composition_empirical(
+    distance_0, k, iterations=10, step=100, bound="upper"
+):
     """Find the global (epsilon, delta)-DP composition of `k` (epsilon_0, delta_0)-DP releases.
     The dataset is shuffled and each release made on a disjoint subset.
     This uses the stronger analytic bound.
@@ -132,17 +142,21 @@ def composition_approxDP_static_homo_shuffle_composition_empirical(distance_0, k
     :param k: number of releases
     :param iterations: number of iterations of binary search. The higher T is, the more accurate the result
     :param step: The larger step is, the less accurate the result, but more efficient the algorithm.
-    :param bound: One of {"lower", "upper"}. 
+    :param bound: One of {"lower", "upper"}.
     """
     epsilon_0, delta_0 = distance_0
-    assert bound in ('upper', 'lower')
+    assert bound in ("upper", "lower")
 
     from utils.shuffling_amplification import numericalanalysis
+
     return numericalanalysis(
-        k, epsilon_0, delta_0, 
+        k,
+        epsilon_0,
+        delta_0,
         num_iterations=iterations,
         step=step,
-        upperbound=bound == 'upper')
+        upperbound=bound == "upper",
+    )
 
 
 def composition_tCDP_static_hetero(distance_is):
@@ -174,15 +188,6 @@ def solve_approxDP_static_homo_advanced(distance_g, k, delta_p):
     return epsilon_0, delta_0
 
 
-
-
-
-
-
-
-
-
-
 ### TESTS
 def test_basic():
     distances = [
@@ -195,19 +200,22 @@ def test_basic():
 
 
 def test_advanced():
-    epsilon_g = 1.
+    epsilon_g = 1.0
     delta_g = 1e-9
 
     # find the per-query epsilon
-    epsilon_0, delta_0 = solve_approxDP_static_homo_advanced(epsilon_g, delta_g, 5, delta_g)
-    assert delta_0 == 0.
+    epsilon_0, delta_0 = solve_approxDP_static_homo_advanced(
+        epsilon_g, delta_g, 5, delta_g
+    )
+    assert delta_0 == 0.0
 
-    # how much epsilon do we use if we were to 
-    epsilon_gp, delta_gp = composition_approxDP_static_homo_advanced(epsilon_0, 0., 5, delta_g)
+    # how much epsilon do we use if we were to
+    epsilon_gp, delta_gp = composition_approxDP_static_homo_advanced(
+        epsilon_0, 0.0, 5, delta_g
+    )
 
     print("per-query epsilon:", epsilon_0)
     print("total epsilon:    ", epsilon_gp)
-
 
 
 def test_optimal():
@@ -219,6 +227,7 @@ def test_optimal():
 
     print(composition_approxDP_static_hetero_basic(distances))
     print(composition_approxDP_static_hetero_optimal_analytic(distances, 1e-8))
+
 
 # test_optimal()
 
@@ -233,17 +242,18 @@ def test_renyiDP_find_alpha():
             epsilon_0 = map_l2dist_gaussianmech_renyiDP(sensitivity, scale, alpha)
             epsilon_g = composition_renyiDP_static_hetero(alpha, [epsilon_0] * k)[1]
             return cast_renyiDP_approxDP_original_fix_delta(alpha, epsilon_g, delta)[0]
+
         return estimate_approxDP_epsilon
 
     # L2 sensitivity of the query
-    sensitivity = .3
+    sensitivity = 0.3
 
     # gaussian noise scale
-    scale = 3.
+    scale = 3.0
 
     # number of releases
     k = 30
-    
+
     estimate_approxDP_epsilon = fix_params(sensitivity, scale, k, 1e-6)
 
     alphas = list(range(2, 101))
@@ -256,7 +266,9 @@ def test_renyiDP_find_alpha():
     print("corresponding epsilon:", np.min(distances))
 
     import matplotlib.pyplot as plt
+
     plt.plot(alphas, distances)
     plt.show()
+
 
 # test_renyiDP_find_alpha()

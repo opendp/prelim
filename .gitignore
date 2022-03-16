@@ -152,3 +152,5 @@ Cargo.lock
 .DS_Store
 
 scratch/
+.vscode/
+todo.md

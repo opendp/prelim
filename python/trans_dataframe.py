@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def digitize_dataframe(df, labels, categorical):
+def transform_digitize_dataframe(df, labels, categorical):
     """Convert a pandas dataframe into an indexes array.
 
     :param df: columns must match the keys in `labels`
@@ -40,7 +40,7 @@ def test_digitize_dataframe():
 
     categorical_names = ["A", "B"]
 
-    digitized = digitize_dataframe(data, labels, categorical_names)
+    digitized = transform_digitize_dataframe(data, labels, categorical_names)
     ground_truth = [[0, 0, 0], [1, 1, 0], [3, 2, 2], [1, 2, 2]]
 
     # check that the digitization is correct

@@ -47,6 +47,23 @@ def _nodes_from_layers(layers, b):
     return (b**layers - 1) // (b - 1)
 
 
+def choose_b(n):
+    """Choose the optimal branching factor.
+    Proposition 1: http://www.vldb.org/pvldb/vol6/p1954-qardaji.pdf
+    From "Optimal Branching Factor", try different values of b, up to flat clipping.
+
+    :param n: ballpark estimate of dataset size
+    """
+
+    def v_star_avg(b):
+        """Formula (3) estimates variance"""
+        h = np.ceil(np.log(n) / np.log(b))
+        return (b - 1) * h**3 - 2 * (b + 1) * h**2 / 3
+
+    # find the b with minimum average variance
+    return min(range(2, n + 1), key=v_star_avg)
+
+
 def postprocess_b_ary_tree(tree, b):
     """Postprocess a balanced `b`-ary tree to be consistent.
 
@@ -180,3 +197,59 @@ def test_layers_from_nodes():
 
 
 # test_release_b_ary_tree()
+
+
+# TESTS
+def test_tree_and_hist_equal():
+    # setup
+    leaf_counts = np.random.randint(0, 2000, size=27)
+    # leaf_counts = np.array([2, 3, 1, 4, 5, 6, 3]) * 20
+    m = 3
+    sensitivity = 1
+    epsilon = 1
+    scale = sensitivity / epsilon
+
+    # run transformation
+    tree = transform_b_ary_tree(leaf_counts, b=m)
+    sensitivity = transform_b_ary_tree_relation(len(leaf_counts), m, sensitivity)
+
+    # privatize
+    from opendp.meas import make_base_geometric
+    from opendp.mod import enable_features
+
+    enable_features("contrib")
+
+    mech = make_base_geometric(scale, D="VectorDomain<AllDomain<i64>>")
+    tree_noisy = np.array(mech(tree))
+    post_counts_tree = postprocess_b_ary_tree(tree_noisy, m)
+
+    from post_histogram_hierarchical_consistency import postprocess_tree_histogramdd
+
+    colla = np.array(tree[13:]).reshape((3, 3, 3))
+    collb = np.array(tree[4:13]).reshape((3, 3))
+    collc = np.array(tree[1:4])
+    colld = np.array(tree[0])
+
+    assert np.array_equal(colla.sum(axis=2), collb), "collapse axis is wrong"
+    assert np.array_equal(collb.sum(axis=1), collc), "collapse axis is wrong"
+    assert np.array_equal(collc.sum(axis=0), colld), "collapse axis is wrong"
+
+    post_counts_hist = postprocess_tree_histogramdd(
+        {
+            (): np.array(tree_noisy[0]),
+            (0,): np.array(tree_noisy[1:4]),
+            (0, 1): np.array(tree_noisy[4:13]).reshape((3, 3)),
+            (0, 1, 2): np.array(tree_noisy[13:]).reshape((3, 3, 3)),
+        },
+        {
+            (): scale,
+            (0,): scale,
+            (0, 1): scale,
+            (0, 1, 2): scale,
+        },
+    ).ravel()
+
+    assert np.array_equal(post_counts_hist, post_counts_tree)
+
+
+# test_tree_and_hist_equal()

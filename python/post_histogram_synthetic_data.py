@@ -114,7 +114,7 @@ def test_synthetic_data():
 def test_mixed_natures():
     import pandas as pd
     from stat_histogram import release_histogramdd_indexes
-    from trans_dataframe import digitize_dataframe
+    from trans_dataframe import transform_digitize_dataframe
 
     # demonstrate generating synthetic data with a mixture of categorical and continuous variables
 
@@ -145,7 +145,7 @@ def test_mixed_natures():
     )
 
     # transform dataframe into an array of indexes into labels
-    digitized = digitize_dataframe(data, labels, categorical_names)
+    digitized = transform_digitize_dataframe(data, labels, categorical_names)
 
     # make a dp release of the digitized dataset
     dp_release = release_histogramdd_indexes(digitized, list(map(len, categories)), 1.0)

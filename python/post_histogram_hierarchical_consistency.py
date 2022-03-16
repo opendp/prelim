@@ -1,26 +1,3 @@
-# BCDK+07 A Holistic Solution to Contingency Table Release
-# * paper https://cseweb.ucsd.edu//~kamalika/pubs/bcdkmt07.pdf
-
-# HRMS09 Boosting the Accuracy of Differentially-Private Histograms Through Consistency
-# * paper https://arxiv.org/pdf/0904.0942.pdf
-
-# LHR+10 Optimizing Linear Counting Queries Under Differential Privacy
-# * paper https://people.cs.umass.edu/~mcgregor/papers/10-pods.pdf
-# computationally heavy
-
-# MMHM18 Optimizing error of high-dimensional statistical queries under differential privacy.
-# * paper https://arxiv.org/pdf/1808.03537.pdf
-
-# ENU19 The Power of Factorization Mechanisms in Local and Central Differential Privacy
-# * paper https://arxiv.org/pdf/1911.08339.pdf
-
-# YXLLW21 Improved Matrix Gaussian Mechanism for Differential Privacy
-# * paper https://arxiv.org/pdf/2104.14808.pdf
-
-# QYL13 HB
-# * paper http://www.vldb.org/pvldb/vol6/p1954-qardaji.pdf
-# implementation candidate
-
 from typing import List
 import numpy as np
 
@@ -197,7 +174,7 @@ def postprocess_tree_histogramdd(hists, scales):
     var = scales[axes[-1]] ** 2
 
     # bottom-up scan to compute z
-    for parent, child in zip(axes[1::-1], axes[::-1][:-1]):
+    for parent, child in zip(axes[::-1][1:], axes[::-1][:-1]):
         axes_to_sum = _axes_to_sum(child=child, parent=parent)
         b = _branching_factor(category_lengths, axes_to_sum)
 
@@ -225,7 +202,7 @@ def postprocess_tree_histogramdd(hists, scales):
         correction = (h_b[parent] - hists[child].sum(axis=axes_to_sum)) / b
         h_b[child] += np.expand_dims(correction, axes_to_sum)
 
-    _check_consistent(h_b)
+    # _check_consistent(h_b)
 
     # entire tree is consistent, so only the bottom layer is needed
     return h_b[axes[-1]]
@@ -323,16 +300,16 @@ def test_postprocess_tree_histogramdd():
 
 
 def test_postprocess_tree_histogramdd_2():
-    cat_counts = [3, 3, 3, 3]
+    cat_counts = [3, 7, 2, 12]
     size = 100
     x = np.stack([np.random.randint(c, size=size) for c in cat_counts], axis=1)
 
-    ways = {(): 1., (0, 1): 1.0, (0,): 1., (0, 1, 2): 1.}
+    ways = {(): .4, (0, 1): 1.0, (0,): 1., (0, 1, 2, 3): .7}
 
     noisy_hists = release_hierarchical_histogramdd_indexes(x, cat_counts, ways)
     
     final_counts = postprocess_tree_histogramdd(noisy_hists, ways)
-    noisy_counts = noisy_hists[(0, 1, 2)]
+    noisy_counts = noisy_hists[(0, 1, 2, 3)]
     exact_counts = histogramdd_indexes(x, cat_counts)
 
     final_mse = ((final_counts - exact_counts) ** 2).mean()
