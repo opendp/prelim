@@ -171,7 +171,7 @@ def _check_consistent(hists):
         )
 
 
-def postprocess_tree_histogramdd(hists):
+def postprocess_tree_histogramdd(hists, scales):
     """Make a set of noisy hypercubes of successive summations consistent with each other.
     Assumes that all hists were noised with the same noise scale.
 
@@ -193,19 +193,26 @@ def postprocess_tree_histogramdd(hists):
     # find shape of each axis. Last histogram holds all axis lengths
     category_lengths = np.array(hists[axes[-1]].shape)
 
-    # height of tree
-    l = len(hists)
+    # variance of postprocessed current layer. Starting at root, which is not postprocessed
+    var = scales[axes[-1]] ** 2
 
     # bottom-up scan to compute z
     for parent, child in reversed(list(zip(axes[:-1], axes[1:]))):
+        # we skip the root level
         axes_to_sum = _axes_to_sum(child=child, parent=parent)
-        m = _branching_factor(category_lengths, axes_to_sum)
+        b = _branching_factor(category_lengths, axes_to_sum)
+
+        # derive overall variance of parent after weighted averaging
+        var = 1 / scales[parent]**2 + 1 / (b * var)
+
+        # weight parent layer based on its proportion of overall variance
+        alpha = (1 / scales[parent]**2) / var
 
         # hists[parent] has not been overriden because traversal order is bottom to top
-        term1 = (m**l - m ** (l - 1)) / (m**l - 1) * hists[parent]
+        term1 = alpha * hists[parent]
 
         # hists[child] has been overwritten by previous loop
-        term2 = (m ** (l - 1) - 1) / (m**l - 1) * hists[child].sum(axis=axes_to_sum)
+        term2 = (1 - alpha) * hists[child].sum(axis=axes_to_sum)
 
         hists[parent] = term1 + term2
 
@@ -214,9 +221,9 @@ def postprocess_tree_histogramdd(hists):
     # top down scan to compute h
     for parent, child in zip(axes[:-1], axes[1:]):
         axes_to_sum = _axes_to_sum(child=child, parent=parent)
-        m = _branching_factor(category_lengths, axes_to_sum)
+        b = _branching_factor(category_lengths, axes_to_sum)
 
-        correction = (h_b[parent] - hists[child].sum(axis=axes_to_sum)) / m
+        correction = (h_b[parent] - hists[child].sum(axis=axes_to_sum)) / b
         h_b[child] += np.expand_dims(correction, axes_to_sum)
 
     # _check_consistent(h_b)
@@ -321,12 +328,11 @@ def test_postprocess_tree_histogramdd_2():
     size = 100
     x = np.stack([np.random.randint(c, size=size) for c in cat_counts], axis=1)
 
-    scale = 1.0
-    ways = {(0, 1): scale, (0,): scale, (0, 1, 2, 3): scale}
+    ways = {(0, 1): 1.0, (0,): 0.5, (0, 1, 2, 3): 3.}
 
     noisy_hists = release_hierarchical_histogramdd_indexes(x, cat_counts, ways)
     
-    final_counts = postprocess_tree_histogramdd(noisy_hists)
+    final_counts = postprocess_tree_histogramdd(noisy_hists, ways)
     noisy_counts = noisy_hists[(0, 1, 2, 3)]
     exact_counts = histogramdd_indexes(x, cat_counts)
 
