@@ -1,6 +1,6 @@
 import numpy as np
 
-from python.post_fractional_estimate import debias_reciprocal
+from post_fractional_estimate import debias_reciprocal
 
 
 def _sens_sum(a, b):

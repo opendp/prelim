@@ -18,7 +18,9 @@ def debias_reciprocal(shift, scale, dist=np.random.normal(size=10_000)):
         MB = E[X] * E[1 / X]
         MB = `shift` * (1 / X).mean()
     Return `shift` * MB, an asymptotically unbiased estimate for 1 / mu
-        `shift`^2 * (1 / X).mean()
+
+    Diverges when the noise scale is similar in magnitude to shift,
+        so correction factor is clamped between 1 and 2.
 
     :param shift: differentially private estimate to be used in denominator
     :param scale: scale of symmetric noise that was added to `shift`
@@ -29,8 +31,11 @@ def debias_reciprocal(shift, scale, dist=np.random.normal(size=10_000)):
     # construct empirical distribution
     X = shift + scale * dist
 
+    mb = shift * (1 / X).mean()
+
     # apply correction factor to shift
-    return shift**2 * (1 / X).mean()
+    # corrections less than 1 or greater than 2 don't make sense
+    return shift * np.clip(mb, 1, 2)
 
 
 def _tester(x, scale, dist):
