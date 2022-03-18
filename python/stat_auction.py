@@ -1,4 +1,4 @@
-from meas_exponential import exponential_mechanism_discrete
+from meas_exponential import mechanism_exponential_discrete
 import numpy as np
 
 
@@ -12,7 +12,7 @@ def release_dp_auction_price_via_de(x, candidate_prices, epsilon):
     :param x: The maximum each buyer is willing to spend.
     :param candidate_prices: potential price levels
     :returns a price that nearly maximizes revenue"""
-    return exponential_mechanism_discrete(x, candidate_prices, epsilon,
+    return mechanism_exponential_discrete(x, candidate_prices, epsilon,
         scorer=score_auction_price_discrete,
         sensitivity=max(candidate_prices))
 
@@ -33,7 +33,7 @@ def release_dp_auction_constrained_price_via_de(x, candidate_pairs, epsilon):
     :returns a (price, product_id) that nearly maximizes revenue"""
     prices = map(lambda v: v[0], candidate_pairs)
 
-    return exponential_mechanism_discrete(x, candidate_pairs, epsilon,
+    return mechanism_exponential_discrete(x, candidate_pairs, epsilon,
         scorer=score_auction_constrained_price_discrete,
         sensitivity=max(prices))
 

@@ -4,7 +4,10 @@ from utils.samplers import cond_laplace
 
 
 def compute_median_smooth_sensitivity(x, bounds, beta):
-    """Using Definition 3.1"""
+    """Using Definition 3.1
+    This is a quadratic-time algorithm. 
+    Did not implement the linear-time J-list algorithm because other methods seem to out-perform.
+    """
     lower, upper = bounds
     n = len(x)
     m = (n + 1) // 2

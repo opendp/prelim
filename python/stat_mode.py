@@ -12,7 +12,7 @@ def release_dp_mode_via_de(x, candidates, epsilon, neighboring):
     """Release the dp mode via the Discrete Exponential mechanism"""
     # sensitivity is 1 regardless of if input metric is Hamming or Symmetric
 
-    return exponential_mechanism_discrete(x, candidates, epsilon,
+    return mechanism_exponential_discrete(x, candidates, epsilon,
         scorer=score_mode_discrete, 
         sensitivity=1,
         monotonic={

@@ -21,7 +21,7 @@ def release_dp_median_absolute_deviation(x, median, bounds, epsilon):
     return release_dp_median_via_ce(x - median, error_bounds, epsilon)
 
 
-def release_dp_average_absolute_deviation(x, mu, bounds, epsilon):
+def release_dp_mean_absolute_deviation_plugin(x, mu, bounds, epsilon):
     """A simple transformation to release the dp mean absolute deviation.
     Assumes dataset size len(`x`) is public.
     """
@@ -40,3 +40,29 @@ def release_dp_average_absolute_deviation(x, mu, bounds, epsilon):
 
     # release
     return dp_mean_estimator(np.abs(x - mu))
+
+
+def release_dp_mean_absolute_deviation(x, bounds, epsilon):
+    """Release the dp mean absolute deviation.
+    Assumes dataset size len(`x`) is public.
+
+    Theorem 27: https://arxiv.org/pdf/2001.02285.pdf
+    """
+    lower, upper = bounds
+    sensitivity = (upper - lower) * 2. / len(x)
+
+    x = np.clip(x, *bounds)
+    mad = (x - x.mean()).abs().mean()
+    base_lap = binary_search_chain(lambda s: make_base_laplace(s), sensitivity, epsilon)
+
+    return base_lap(mad)
+
+
+def release_dp_variance_mad(x, bounds, epsilon):
+    """Estimate the mean absolute deviation, and then transform it into an estimate for variance.
+
+    Algorithm 4: https://arxiv.org/pdf/2001.02285.pdf
+    Asymptotically has smaller error than directly releasing the variance.
+    """
+    mad = release_dp_mean_absolute_deviation(x, bounds, epsilon)
+    return np.max(0, mad) * np.sqrt(np.pi / 2)
