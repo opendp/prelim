@@ -12,20 +12,29 @@ enable_features("contrib")
 
 
 # QUANTILE BY HISTOGRAMS
-def postprocess_quantile(categories, counts, alphas: np.ndarray):
+def postprocess_quantile(categories, counts, alphas: np.ndarray, interpolate=True):
     """Postprocess a histogram release into a quantile estimate.
 
     :param categories: ordered data of length t
     :param counts: estimates of the counts of `categories`, of length t
     :param alphas: vector, each is the proportion of entries to the left, ranging from [0, 1]
+    :param interp: if True, interpolate amongst the bin labels
     :return the category corresponding to the q-quantile of counts"""
     # approximate the cdf via `counts`
     cdf = np.cumsum(counts).astype(np.float)
     cdf /= cdf[-1]
 
-    alphas = np.atleast_1d(alphas)[:, None]
+    alphas = np.atleast_1d(alphas)
 
-    return categories[np.argmax(cdf >= alphas, axis=1)]
+    indices = np.argmax(cdf >= alphas[:, None], axis=1)
+
+    if interpolate:
+        interps = np.empty_like(alphas, dtype=float)
+        for i, idx in enumerate(indices):
+            interps[i] = np.interp(alphas[i], cdf[idx - 1: idx + 1], categories[idx - 1: idx + 1])
+        return interps
+    
+    return categories[indices]
 
 
 # MEDIAN BY DISCRETE EXPONENTIAL
@@ -179,7 +188,7 @@ def test_postprocess_quantile():
     )
 
     data = np.random.randint(100, size=1000)
-    dp_histogram_release = histogrammer(data)
+    dp_histogram_release = np.array(histogrammer(data))
     quantiles = postprocess_quantile(
         categories, dp_histogram_release[:-1], alphas=[0.3, 0.7]
     )
