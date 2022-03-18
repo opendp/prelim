@@ -2,7 +2,7 @@ import numpy as np
 from utils.samplers import *
 
 
-def exponential_mechanism_discrete(x, candidates, epsilon, scorer, sensitivity, monotonic=False):
+def mechanism_exponential_discrete(x, candidates, epsilon, scorer, sensitivity, monotonic=False):
     """Return an `epsilon`-DP sample from the set of discrete `candidates`.
     The sampling probabilities is constructed by running `scorer` on `x` for each candidate.
 
@@ -36,7 +36,7 @@ def exponential_mechanism_discrete(x, candidates, epsilon, scorer, sensitivity, 
     return candidates[index]
 
 
-def exponential_mechanism_1d(x, bounds, epsilon, scorer, sensitivity, monotonic=False):
+def mechanism_exponential_1d(x, bounds, epsilon, scorer, sensitivity, monotonic=False):
     """Return an `epsilon`-DP sample from the continuous 1-d distribution over `bounds`.
     The distribution is constructed by running `scorer` on `x`.
 
@@ -78,7 +78,7 @@ def exponential_mechanism_1d(x, bounds, epsilon, scorer, sensitivity, monotonic=
 # Using this trick to get the same outcome:
 # https://lips.cs.princeton.edu/the-gumbel-max-trick-for-discrete-distributions/
 
-def exponential_mechanism_discrete_gumbel(x, candidates, epsilon, scorer, sensitivity, monotonic=False):
+def mechanism_exponential_discrete_gumbel(x, candidates, epsilon, scorer, sensitivity, monotonic=False):
     """Return an `epsilon`-DP sample from the set of discrete `candidates`.
     The sampling probabilities is constructed by running `scorer` on `x` for each candidate.
 
@@ -101,18 +101,21 @@ def exponential_mechanism_discrete_gumbel(x, candidates, epsilon, scorer, sensit
     sensitivity *= 1 if monotonic else 2
     log_likelihoods = epsilon * scores / sensitivity
 
-    # add gumbel noise in log space
-    noise = np.random.gumbel(epsilon / sensitivity, size=log_likelihoods.shape)
+    # add gumbel noise in log space (when hardening, don't forget to reject Uniform = 1)
+    log_likelihoods -= np.log(-np.log(np.random.uniform(size=log_likelihoods.shape)))
+
+    # equivalent approach 
+    # log_likelihoods = np.random.gumbel(log_likelihoods, size=log_likelihoods.shape)
 
     # the value with the largest noisy score is the selected bin index
-    index = np.argmax(log_likelihoods + noise)
+    index = np.argmax(log_likelihoods)
 
     # return the respective candidate
     return candidates[index]
 
 
 
-def exponential_mechanism_1d_gumbel(x, bounds, epsilon, scorer, sensitivity, monotonic=False):
+def mechanism_exponential_1d_gumbel(x, bounds, epsilon, scorer, sensitivity, monotonic=False):
     """Return an `epsilon`-DP sample from the continuous 1-d distribution over `bounds`.
     The distribution is constructed by running `scorer` on `x`.
 
@@ -138,11 +141,14 @@ def exponential_mechanism_1d_gumbel(x, bounds, epsilon, scorer, sensitivity, mon
     # compute likelihoods in log space
     log_likelihoods = np.log(np.diff(x)) + scores * epsilon / sensitivity
 
-    # add gumbel noise in log space
-    noise = np.random.gumbel(epsilon / sensitivity, size=log_likelihoods.shape)
+    # add gumbel noise in log space (when hardening, don't forget to reject Uniform = 1)
+    log_likelihoods -= np.log(-np.log(np.random.uniform(size=log_likelihoods.shape)))
+
+    # equivalent approach 
+    # log_likelihoods = np.random.gumbel(log_likelihoods, size=log_likelihoods.shape)
 
     # the value with the largest noisy score is the selected bin index
-    index = np.argmax(log_likelihoods + noise)
+    index = np.argmax(log_likelihoods)
 
     # sample uniformly from the selected interval
     return cond_uniform(low=x[index], high=x[index + 1])
