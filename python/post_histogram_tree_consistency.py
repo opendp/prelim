@@ -50,7 +50,7 @@ def _nodes_from_layers(layers, b):
 def choose_b(n):
     """Choose the optimal branching factor.
     Proposition 1: http://www.vldb.org/pvldb/vol6/p1954-qardaji.pdf
-    From "Optimal Branching Factor", try different values of b, up to flat clipping.
+    From "Optimal Branching Factor", try different values of b, up to flat.
 
     :param n: ballpark estimate of dataset size
     """
@@ -71,6 +71,8 @@ def postprocess_b_ary_tree(tree, b):
     Non-existent leaves are assumed to be zero.
 
     See 4.1: https://arxiv.org/pdf/0904.0942.pdf
+
+    At the cost of implementation complexity, output remains consistent even when leaf nodes are missing
 
     :param tree: a balanced `b`-ary tree implicitly stored in breadth-first order
     :param m: the maximum number of children
