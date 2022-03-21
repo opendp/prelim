@@ -6,6 +6,16 @@ import numpy as np
 def cast_pureDP_approxDP(epsilon):
     return epsilon, 0
 
+def cast_pureDP_approxDP_fix_delta(epsilon, delta):
+    """cast an `epsilon`-DP measurement to a (epsilon', `delta`)-DP measurement
+    Subtlety 2: https://eprint.iacr.org/2018/277.pdf#page=3
+    """
+    from utils.logs import log_sub_exp
+    # delta = exp(eps) - exp(eps_new)
+    # eps_new = log(exp(eps) - delta)
+    #         = log(exp(eps) - exp(log(delta)))
+    #         = log_sub_exp(eps - log(delta))
+    return log_sub_exp(epsilon, np.log(delta)), delta
 
 def cast_pureDP_zCDP(epsilon):
     """cast a epsilon-DP measurement to a (xi, rho)-zCDP measurement
